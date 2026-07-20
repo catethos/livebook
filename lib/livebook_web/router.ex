@@ -70,6 +70,9 @@ defmodule LivebookWeb.Router do
     post "/restamp", DevController, :restamp
     post "/cells", DevController, :cells
     post "/evaluate", DevController, :evaluate
+    post "/insert_cell", DevController, :insert_cell
+    post "/update_cell", DevController, :update_cell
+    post "/delete_cell", DevController, :delete_cell
   end
 
   live_session :default,

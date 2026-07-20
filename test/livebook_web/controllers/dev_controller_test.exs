@@ -203,6 +203,48 @@ defmodule LivebookWeb.DevControllerTest do
     end
   end
 
+  describe "cell mutations" do
+    @tag :tmp_dir
+    test "inserts, updates, and deletes a cell", %{conn: conn, tmp_dir: tmp_dir} do
+      file = FileSystem.File.local(Path.join(tmp_dir, "notebook.livemd"))
+      :ok = FileSystem.File.write(file, "# My notebook\n\n## Main\n")
+
+      open_conn = post(conn, ~p"/dev/open", %{file: file.path})
+      assert %{"path" => "/sessions/" <> session_id} = json_response(open_conn, 200)
+      {:ok, session} = Sessions.fetch_session(session_id)
+      [section] = Session.get_data(session.pid).notebook.sections
+
+      insert_conn =
+        post(recycle(conn), ~p"/dev/insert_cell", %{
+          file: file.path,
+          section_id: section.id,
+          type: "code",
+          source: "1 + 1"
+        })
+
+      assert %{"status" => "ok", "cell_id" => cell_id} = json_response(insert_conn, 200)
+      assert {cell_id, "1 + 1"} in cell_ids_and_sources(session.pid)
+
+      update_conn =
+        post(recycle(conn), ~p"/dev/update_cell", %{
+          file: file.path,
+          cell_id: cell_id,
+          source: "40 + 2"
+        })
+
+      assert json_response(update_conn, 200) == %{"status" => "ok", "cell_id" => cell_id}
+      assert {cell_id, "40 + 2"} in cell_ids_and_sources(session.pid)
+
+      delete_conn =
+        post(recycle(conn), ~p"/dev/delete_cell", %{file: file.path, cell_id: cell_id})
+
+      assert json_response(delete_conn, 200) == %{"status" => "ok", "cell_id" => cell_id}
+      refute Enum.any?(cell_ids_and_sources(session.pid), fn {id, _} -> id == cell_id end)
+
+      Session.close(session.pid)
+    end
+  end
+
   describe "evaluate" do
     @tag :tmp_dir
     test "queues an evaluable cell", %{conn: conn, tmp_dir: tmp_dir} do
@@ -384,5 +426,14 @@ defmodule LivebookWeb.DevControllerTest do
       {notebook, _} = Livebook.LiveMarkdown.notebook_from_livemd(source)
       assert %{hub_id: "personal-hub", hub_secret_names: ["MY_SECRET"]} = notebook
     end
+  end
+
+  defp cell_ids_and_sources(session_pid) do
+    session_pid
+    |> Session.get_data()
+    |> Map.fetch!(:notebook)
+    |> Livebook.Notebook.all_sections()
+    |> Enum.flat_map(& &1.cells)
+    |> Enum.map(&{&1.id, &1.source})
   end
 end

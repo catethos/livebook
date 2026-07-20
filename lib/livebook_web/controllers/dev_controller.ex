@@ -3,6 +3,7 @@ defmodule LivebookWeb.DevController do
 
   alias Livebook.{LiveMarkdown, Notebook, Session}
   alias Livebook.Notebook.Cell
+  alias Livebook.Text.Delta
 
   plug :disallow_browser
   plug :require_enabled
@@ -80,6 +81,71 @@ defmodule LivebookWeb.DevController do
     end
   end
 
+  def insert_cell(conn, %{"file" => path, "section_id" => section_id, "type" => type} = params)
+      when is_binary(path) and is_binary(section_id) and type in ["code", "markdown"] do
+    with {:ok, session} <- fetch_session_by_file(path),
+         data <- Session.get_data(session.pid),
+         {:ok, section} <- Notebook.fetch_section(data.notebook, section_id),
+         {:ok, index} <- insertion_index(section, params["after_cell_id"]) do
+      cell_id = Livebook.Utils.random_id()
+      attrs = %{source: params["source"] || ""}
+
+      Session.insert_cell(
+        session.pid,
+        section_id,
+        index,
+        String.to_existing_atom(type),
+        attrs,
+        cell_id
+      )
+
+      Session.get_data(session.pid)
+      json(conn, %{status: "ok", cell_id: cell_id})
+    else
+      {:error, :session_not_found} -> error(conn, 404, "No session found for the given file")
+      :error -> error(conn, 404, "No section found for the given section_id")
+      {:error, :cell_not_found} -> error(conn, 404, "No cell found for the given after_cell_id")
+    end
+  end
+
+  def update_cell(conn, %{"file" => path, "cell_id" => cell_id, "source" => source})
+      when is_binary(path) and is_binary(cell_id) and is_binary(source) do
+    with {:ok, session} <- fetch_session_by_file(path),
+         data <- Session.get_data(session.pid),
+         {:ok, cell, _section} <- Notebook.fetch_cell_and_section(data.notebook, cell_id) do
+      revision = data.cell_infos[cell_id].sources.primary.revision
+
+      Session.apply_cell_delta(
+        session.pid,
+        cell_id,
+        :primary,
+        Delta.diff(cell.source, source),
+        nil,
+        revision
+      )
+
+      Session.get_data(session.pid)
+      json(conn, %{status: "ok", cell_id: cell_id})
+    else
+      {:error, :session_not_found} -> error(conn, 404, "No session found for the given file")
+      :error -> error(conn, 404, "No cell found for the given cell_id")
+    end
+  end
+
+  def delete_cell(conn, %{"file" => path, "cell_id" => cell_id})
+      when is_binary(path) and is_binary(cell_id) do
+    with {:ok, session} <- fetch_session_by_file(path),
+         data <- Session.get_data(session.pid),
+         {:ok, _cell, _section} <- Notebook.fetch_cell_and_section(data.notebook, cell_id) do
+      Session.delete_cell(session.pid, cell_id)
+      Session.get_data(session.pid)
+      json(conn, %{status: "ok", cell_id: cell_id})
+    else
+      {:error, :session_not_found} -> error(conn, 404, "No session found for the given file")
+      :error -> error(conn, 404, "No cell found for the given cell_id")
+    end
+  end
+
   def evaluate(conn, %{"file" => path, "cell_id" => cell_id})
       when is_binary(path) and is_binary(cell_id) do
     with {:ok, session} <- fetch_session_by_file(path),
@@ -137,6 +203,15 @@ defmodule LivebookWeb.DevController do
          end) do
       nil -> {:error, :session_not_found}
       session -> {:ok, session}
+    end
+  end
+
+  defp insertion_index(section, nil), do: {:ok, length(section.cells)}
+
+  defp insertion_index(section, cell_id) when is_binary(cell_id) do
+    case Enum.find_index(section.cells, &(&1.id == cell_id)) do
+      nil -> {:error, :cell_not_found}
+      index -> {:ok, index + 1}
     end
   end
 
