@@ -252,45 +252,12 @@ const Session = {
     });
   },
 
-  beforeUpdate() {
-    const focusedEl = this.focusedId && this.getFocusableEl(this.focusedId);
-
-    this.restoreEditorFocus =
-      this.insertMode &&
-      focusedEl &&
-      focusedEl.contains(document.activeElement);
-  },
-
   updated() {
     const prevProps = this.props;
     this.props = this.getProps();
 
     if (this.props.globalStatus !== prevProps.globalStatus) {
       setFavicon(this.faviconForEvaluationStatus(this.props.globalStatus));
-    }
-
-    if (this.restoreEditorFocus) {
-      const focusedId = this.focusedId;
-      this.restoreEditorFocus = false;
-
-      requestAnimationFrame(() => {
-        const focusedEl = focusedId && this.getFocusableEl(focusedId);
-
-        if (
-          focusedEl &&
-          this.focusedId === focusedId &&
-          this.insertMode &&
-          !focusedEl.contains(document.activeElement)
-        ) {
-          globalPubsub.broadcast("navigation:focus_changed", {
-            focusableId: focusedId,
-            scroll: false,
-          });
-          globalPubsub.broadcast("navigation:insert_mode_changed", {
-            enabled: true,
-          });
-        }
-      });
     }
   },
 
