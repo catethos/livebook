@@ -1249,14 +1249,20 @@ const Session = {
   },
 
   handleRemoteCellInserted() {
-    if (this.focusedId) {
-      const insertMode = this.insertMode;
-      this.setFocusedEl(this.focusedId, { scroll: false });
+    const focusedId = this.focusedId;
+    const insertMode = this.insertMode;
 
-      if (insertMode && isDirectlyEditable(this.focusedCellType())) {
-        this.setInsertMode(true);
+    // LiveView delivers pushed events before the DOM patch is fully settled.
+    // Defer restoring focus so newly mounted cell hooks receive the broadcasts.
+    requestAnimationFrame(() => {
+      if (focusedId && this.focusedId === focusedId) {
+        this.setFocusedEl(focusedId, { scroll: false });
+
+        if (insertMode && isDirectlyEditable(this.focusedCellType())) {
+          this.setInsertMode(true);
+        }
       }
-    }
+    });
   },
 
   handleCellDeleted(cellId, siblingCellId) {
