@@ -81,9 +81,6 @@ const Cell = {
       globalPubsub.subscribe("navigation:insert_mode_changed", ({ enabled }) =>
         this.handleInsertModeChanged(enabled),
       ),
-      globalPubsub.subscribe("navigation:refocus_editor", () =>
-        this.refocusCurrentEditor(),
-      ),
       globalPubsub.subscribe("cells:cell_moved", ({ cellId }) =>
         this.handleCellMoved(cellId),
       ),
@@ -288,13 +285,6 @@ const Cell = {
 
   maybeFocusCurrentEditor() {
     if (this.isFocused && this.insertMode) {
-      this.currentEditor().focus();
-    }
-  },
-
-  refocusCurrentEditor() {
-    if (this.isFocused && this.insertMode && this.currentEditor()) {
-      this.currentEditor().blur();
       this.currentEditor().focus();
     }
   },
