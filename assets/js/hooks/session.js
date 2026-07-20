@@ -97,6 +97,7 @@ const Session = {
     this._handleDocumentMouseDown = this.handleDocumentMouseDown.bind(this);
     this._handleDocumentFocus = this.handleDocumentFocus.bind(this);
     this._handleDocumentClick = this.handleDocumentClick.bind(this);
+    this._handleWindowFocus = this.handleWindowFocus.bind(this);
 
     // Note: we register for the capture phase, so that we handle the
     // event before the editor. Specifically, in case of Ctrl + Enter
@@ -108,6 +109,7 @@ const Session = {
     // Note: the focus event doesn't bubble, so we register for the capture phase
     document.addEventListener("focus", this._handleDocumentFocus, true);
     document.addEventListener("click", this._handleDocumentClick);
+    window.addEventListener("focus", this._handleWindowFocus);
 
     this.getElement("outline").addEventListener("click", (event) => {
       this.handleOutlineClick(event);
@@ -276,6 +278,7 @@ const Session = {
     document.removeEventListener("mousedown", this._handleDocumentMouseDown);
     document.removeEventListener("focus", this._handleDocumentFocus, true);
     document.removeEventListener("click", this._handleDocumentClick);
+    window.removeEventListener("focus", this._handleWindowFocus);
 
     setFavicon("favicon");
 
@@ -548,6 +551,18 @@ const Session = {
       if (focusableId !== this.focusedId) {
         this.setFocusedEl(focusableId, { scroll: false, focusElement: false });
       }
+    }
+  },
+
+  handleWindowFocus() {
+    const activeElement = document.activeElement;
+
+    // When the browser window loses and regains focus, the editor may remain
+    // the active element, so it receives no new focus event and CodeMirror
+    // does not redraw the caret. Replay the missing event without changing
+    // the focused element or the current selection.
+    if (activeElement?.classList.contains("cm-content")) {
+      activeElement.dispatchEvent(new FocusEvent("focus"));
     }
   },
 
