@@ -200,6 +200,10 @@ const Session = {
       this.handleCellInserted(cellId);
     });
 
+    this.handleEvent("remote_cell_inserted", () => {
+      this.handleRemoteCellInserted();
+    });
+
     this.handleEvent(
       "cell_deleted",
       ({ cell_id: cellId, sibling_cell_id: siblingCellId }) => {
@@ -1241,6 +1245,17 @@ const Session = {
     this.setFocusedEl(cellId);
     if (isDirectlyEditable(this.focusedCellType())) {
       this.setInsertMode(true);
+    }
+  },
+
+  handleRemoteCellInserted() {
+    if (this.focusedId) {
+      const insertMode = this.insertMode;
+      this.setFocusedEl(this.focusedId, { scroll: false });
+
+      if (insertMode && isDirectlyEditable(this.focusedCellType())) {
+        this.setInsertMode(true);
+      }
     }
   },
 
