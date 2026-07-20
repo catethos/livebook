@@ -556,7 +556,9 @@ const Session = {
 
   handleWindowFocus() {
     if (this.focusedId && this.insertMode) {
-      globalPubsub.broadcast("navigation:refocus_editor", {});
+      requestAnimationFrame(() => {
+        globalPubsub.broadcast("navigation:refocus_editor", {});
+      });
     }
   },
 
