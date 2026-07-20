@@ -130,6 +130,157 @@ defmodule LivebookWeb.DevControllerTest do
     end
   end
 
+  describe "cells" do
+    @tag :tmp_dir
+    test "returns the current notebook structure and evaluation state", %{
+      conn: conn,
+      tmp_dir: tmp_dir
+    } do
+      file = FileSystem.File.local(Path.join(tmp_dir, "notebook.livemd"))
+
+      :ok =
+        FileSystem.File.write(file, """
+        # My notebook
+
+        ## Calculation
+
+        Some explanation.
+
+        ```elixir
+        40 + 2
+        ```
+        """)
+
+      open_conn = post(conn, ~p"/dev/open", %{file: file.path})
+      assert %{"path" => "/sessions/" <> session_id} = json_response(open_conn, 200)
+
+      conn = post(recycle(conn), ~p"/dev/cells", %{file: file.path})
+
+      assert %{
+               "status" => "ok",
+               "path" => "/sessions/" <> ^session_id,
+               "sections" => sections
+             } = json_response(conn, 200)
+
+      assert [
+               %{
+                 "name" => "Setup",
+                 "cells" => [%{"id" => "setup", "type" => "code"}]
+               },
+               %{
+                 "name" => "Calculation",
+                 "cells" => [
+                   %{"type" => "markdown", "source" => "Some explanation."},
+                   %{
+                     "type" => "code",
+                     "source" => "40 + 2",
+                     "evaluation" => %{
+                       "status" => "ready",
+                       "validity" => "fresh",
+                       "evaluation_number" => 0
+                     }
+                   }
+                 ]
+               }
+             ] = sections
+
+      {:ok, session} = Sessions.fetch_session(session_id)
+      Session.close(session.pid)
+    end
+
+    @tag :tmp_dir
+    test "returns error when no session exists for the given file", %{
+      conn: conn,
+      tmp_dir: tmp_dir
+    } do
+      path = Path.join(tmp_dir, "notebook.livemd")
+      conn = post(conn, ~p"/dev/cells", %{file: path})
+
+      assert json_response(conn, 404) == %{
+               "status" => "error",
+               "message" => "No session found for the given file"
+             }
+    end
+  end
+
+  describe "evaluate" do
+    @tag :tmp_dir
+    test "queues an evaluable cell", %{conn: conn, tmp_dir: tmp_dir} do
+      file = FileSystem.File.local(Path.join(tmp_dir, "notebook.livemd"))
+
+      :ok =
+        FileSystem.File.write(file, """
+        # My notebook
+
+        ## Calculation
+
+        ```elixir
+        40 + 2
+        ```
+        """)
+
+      open_conn = post(conn, ~p"/dev/open", %{file: file.path})
+      assert %{"path" => "/sessions/" <> session_id} = json_response(open_conn, 200)
+      {:ok, session} = Sessions.fetch_session(session_id)
+
+      %{notebook: notebook} = Session.get_data(session.pid)
+      [section] = notebook.sections
+      [cell] = section.cells
+
+      conn = post(recycle(conn), ~p"/dev/evaluate", %{file: file.path, cell_id: cell.id})
+
+      assert json_response(conn, 202) == %{
+               "status" => "accepted",
+               "cell_id" => cell.id
+             }
+
+      assert Session.get_data(session.pid).cell_infos[cell.id].eval.status in [
+               :queued,
+               :evaluating
+             ]
+
+      Session.close(session.pid)
+    end
+
+    @tag :tmp_dir
+    test "rejects missing and non-evaluable cells", %{conn: conn, tmp_dir: tmp_dir} do
+      file = FileSystem.File.local(Path.join(tmp_dir, "notebook.livemd"))
+
+      :ok =
+        FileSystem.File.write(file, """
+        # My notebook
+
+        ## Notes
+
+        Explanation only.
+        """)
+
+      open_conn = post(conn, ~p"/dev/open", %{file: file.path})
+      assert %{"path" => "/sessions/" <> session_id} = json_response(open_conn, 200)
+      {:ok, session} = Sessions.fetch_session(session_id)
+      [section] = Session.get_data(session.pid).notebook.sections
+      [cell] = section.cells
+
+      missing_conn =
+        post(recycle(conn), ~p"/dev/evaluate", %{file: file.path, cell_id: "missing"})
+
+      assert json_response(missing_conn, 404) == %{
+               "status" => "error",
+               "message" => "No cell found for the given cell_id"
+             }
+
+      markdown_conn =
+        post(recycle(conn), ~p"/dev/evaluate", %{file: file.path, cell_id: cell.id})
+
+      assert json_response(markdown_conn, 422) == %{
+               "status" => "error",
+               "message" => "The specified cell is not evaluable"
+             }
+
+      Session.close(session.pid)
+    end
+  end
+
   describe "restamp" do
     test "returns new_source content as is if old_source has no stamp", %{conn: conn} do
       old_source = """

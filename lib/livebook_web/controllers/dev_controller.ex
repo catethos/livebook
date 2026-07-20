@@ -1,7 +1,8 @@
 defmodule LivebookWeb.DevController do
   use LivebookWeb, :controller
 
-  alias Livebook.LiveMarkdown
+  alias Livebook.{LiveMarkdown, Notebook, Session}
+  alias Livebook.Notebook.Cell
 
   plug :disallow_browser
   plug :require_enabled
@@ -58,6 +59,50 @@ defmodule LivebookWeb.DevController do
     end
   end
 
+  def cells(conn, %{"file" => path}) when is_binary(path) do
+    case fetch_session_by_file(path) do
+      {:ok, session} ->
+        data = Session.get_data(session.pid)
+
+        sections =
+          Enum.map(Notebook.all_sections(data.notebook), fn section ->
+            %{
+              id: section.id,
+              name: section.name,
+              cells: Enum.map(section.cells, &cell_info(&1, data.cell_infos))
+            }
+          end)
+
+        json(conn, %{status: "ok", path: ~p"/sessions/#{session.id}", sections: sections})
+
+      {:error, :session_not_found} ->
+        error(conn, 404, "No session found for the given file")
+    end
+  end
+
+  def evaluate(conn, %{"file" => path, "cell_id" => cell_id})
+      when is_binary(path) and is_binary(cell_id) do
+    with {:ok, session} <- fetch_session_by_file(path),
+         data <- Session.get_data(session.pid),
+         {:ok, cell, _section} <- Notebook.fetch_cell_and_section(data.notebook, cell_id),
+         true <- Cell.evaluable?(cell) do
+      Session.queue_cell_evaluation(session.pid, cell_id)
+
+      conn
+      |> put_status(202)
+      |> json(%{status: "accepted", cell_id: cell_id})
+    else
+      {:error, :session_not_found} ->
+        error(conn, 404, "No session found for the given file")
+
+      :error ->
+        error(conn, 404, "No cell found for the given cell_id")
+
+      false ->
+        error(conn, 422, "The specified cell is not evaluable")
+    end
+  end
+
   def restamp(conn, %{"old_source" => old_source, "new_source" => new_source})
       when is_binary(old_source) and is_binary(new_source) do
     {notebook_before, %{has_stamp?: has_stamp?, stamp_verified?: stamp_verified?}} =
@@ -82,6 +127,46 @@ defmodule LivebookWeb.DevController do
         json(conn, %{source: source})
       end
     end
+  end
+
+  defp fetch_session_by_file(path) do
+    file = Livebook.FileSystem.File.local(path)
+
+    case Enum.find(Livebook.Sessions.list_sessions(), fn session ->
+           session.file != nil and Livebook.FileSystem.File.equal?(session.file, file)
+         end) do
+      nil -> {:error, :session_not_found}
+      session -> {:ok, session}
+    end
+  end
+
+  defp cell_info(cell, cell_infos) do
+    info = %{
+      id: cell.id,
+      type: Cell.type(cell),
+      source: cell.source
+    }
+
+    case cell_infos[cell.id] do
+      %{eval: eval} ->
+        Map.put(info, :evaluation, %{
+          status: eval.status,
+          validity: eval.validity,
+          errored: eval.errored,
+          interrupted: eval.interrupted,
+          evaluation_number: eval.evaluation_number,
+          evaluation_time_ms: eval.evaluation_time_ms
+        })
+
+      _ ->
+        info
+    end
+  end
+
+  defp error(conn, status, message) do
+    conn
+    |> put_status(status)
+    |> json(%{status: "error", message: message})
   end
 
   defp disallow_browser(conn, _opts) do

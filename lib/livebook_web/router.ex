@@ -68,6 +68,8 @@ defmodule LivebookWeb.Router do
     post "/sync", DevController, :sync
     post "/open", DevController, :open
     post "/restamp", DevController, :restamp
+    post "/cells", DevController, :cells
+    post "/evaluate", DevController, :evaluate
   end
 
   live_session :default,
