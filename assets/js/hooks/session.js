@@ -97,7 +97,6 @@ const Session = {
     this._handleDocumentMouseDown = this.handleDocumentMouseDown.bind(this);
     this._handleDocumentFocus = this.handleDocumentFocus.bind(this);
     this._handleDocumentClick = this.handleDocumentClick.bind(this);
-    this._handleWindowFocus = this.handleWindowFocus.bind(this);
 
     // Note: we register for the capture phase, so that we handle the
     // event before the editor. Specifically, in case of Ctrl + Enter
@@ -109,7 +108,6 @@ const Session = {
     // Note: the focus event doesn't bubble, so we register for the capture phase
     document.addEventListener("focus", this._handleDocumentFocus, true);
     document.addEventListener("click", this._handleDocumentClick);
-    window.addEventListener("focus", this._handleWindowFocus);
 
     this.getElement("outline").addEventListener("click", (event) => {
       this.handleOutlineClick(event);
@@ -278,7 +276,6 @@ const Session = {
     document.removeEventListener("mousedown", this._handleDocumentMouseDown);
     document.removeEventListener("focus", this._handleDocumentFocus, true);
     document.removeEventListener("click", this._handleDocumentClick);
-    window.removeEventListener("focus", this._handleWindowFocus);
 
     setFavicon("favicon");
 
@@ -552,19 +549,6 @@ const Session = {
         this.setFocusedEl(focusableId, { scroll: false, focusElement: false });
       }
     }
-  },
-
-  handleWindowFocus() {
-    // Let CodeMirror process the window focus event first. The editor may
-    // remain the active element and consequently receive no element-level
-    // focus event, so replay it on the next frame to redraw the caret.
-    requestAnimationFrame(() => {
-      const activeElement = document.activeElement;
-
-      if (activeElement?.classList.contains("cm-content")) {
-        activeElement.dispatchEvent(new FocusEvent("focus"));
-      }
-    });
   },
 
   /**
