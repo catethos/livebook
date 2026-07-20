@@ -1381,7 +1381,7 @@ defmodule LivebookWeb.SessionLive do
     if client_id == socket.assigns.client_id do
       push_event(socket, "cell_inserted", %{cell_id: cell_id})
     else
-      push_event(socket, "remote_cell_inserted", %{})
+      socket
     end
   end
 
