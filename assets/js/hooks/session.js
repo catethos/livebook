@@ -555,15 +555,16 @@ const Session = {
   },
 
   handleWindowFocus() {
-    const activeElement = document.activeElement;
+    // Let CodeMirror process the window focus event first. The editor may
+    // remain the active element and consequently receive no element-level
+    // focus event, so replay it on the next frame to redraw the caret.
+    requestAnimationFrame(() => {
+      const activeElement = document.activeElement;
 
-    // When the browser window loses and regains focus, the editor may remain
-    // the active element, so it receives no new focus event and CodeMirror
-    // does not redraw the caret. Replay the missing event without changing
-    // the focused element or the current selection.
-    if (activeElement?.classList.contains("cm-content")) {
-      activeElement.dispatchEvent(new FocusEvent("focus"));
-    }
+      if (activeElement?.classList.contains("cm-content")) {
+        activeElement.dispatchEvent(new FocusEvent("focus"));
+      }
+    });
   },
 
   /**
