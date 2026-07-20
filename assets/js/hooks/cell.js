@@ -81,6 +81,9 @@ const Cell = {
       globalPubsub.subscribe("navigation:insert_mode_changed", ({ enabled }) =>
         this.handleInsertModeChanged(enabled),
       ),
+      globalPubsub.subscribe("navigation:refocus_editor", () =>
+        this.maybeFocusCurrentEditor(),
+      ),
       globalPubsub.subscribe("cells:cell_moved", ({ cellId }) =>
         this.handleCellMoved(cellId),
       ),
