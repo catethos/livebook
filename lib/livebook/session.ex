@@ -415,6 +415,11 @@ defmodule Livebook.Session do
     GenServer.cast(pid, {:insert_cell, self(), section_id, index, type, attrs})
   end
 
+  @spec insert_cell(pid(), Section.id(), non_neg_integer(), Cell.type(), map(), Cell.id()) :: :ok
+  def insert_cell(pid, section_id, index, type, attrs, cell_id) do
+    GenServer.cast(pid, {:insert_cell, self(), section_id, index, type, attrs, cell_id})
+  end
+
   @doc """
   Requests a section to be deleted.
   """
@@ -1265,11 +1270,15 @@ defmodule Livebook.Session do
   end
 
   def handle_cast({:insert_cell, client_pid, section_id, index, type, attrs}, state) do
-    client_id = client_id(state, client_pid)
-    # Include new id in the operation, so it's reproducible
-    operation =
-      {:insert_cell, client_id, section_id, index, type, Livebook.Utils.random_id(), attrs}
+    handle_cast(
+      {:insert_cell, client_pid, section_id, index, type, attrs, Livebook.Utils.random_id()},
+      state
+    )
+  end
 
+  def handle_cast({:insert_cell, client_pid, section_id, index, type, attrs, cell_id}, state) do
+    client_id = client_id(state, client_pid)
+    operation = {:insert_cell, client_id, section_id, index, type, cell_id, attrs}
     {:noreply, handle_operation(state, operation)}
   end
 
